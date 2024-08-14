@@ -1,6 +1,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
 import streamlit as st
 import time
+from core import full_chain
 
 # Function to simulate streaming a string
 def stream_string(text, delay=0.02):
@@ -43,12 +44,17 @@ if user_input is not None and user_input.strip() !="":
         st.markdown(user_input)
     
     with st.chat_message("Ai"):
-        try:
-            db = st.session_state.db
-            sql_chain = get_sql_chain(db)
-            # response = get_response(user_query=user_input, db=st.session_state.db, chat_history=st.session_state.chat_history)
-            response = st.write_stream(get_response(user_query=user_input, db=st.session_state.db, chat_history=st.session_state.chat_history))
-            if response is not None and response!="":
-                st.session_state.chat_history.append(AIMessage(content=response))
-        except:
-            stream_string("please try to upload your csv files first!")
+        # try:
+        #     db = st.session_state.db
+        #     sql_chain = get_sql_chain(db)
+        #     # response = get_response(user_query=user_input, db=st.session_state.db, chat_history=st.session_state.chat_history)
+        #     response = st.write_stream(get_response(user_query=user_input, db=st.session_state.db, chat_history=st.session_state.chat_history))
+        #     if response is not None and response!="":
+        #         st.session_state.chat_history.append(AIMessage(content=response))
+        # except:
+        #     stream_string("please try to upload your csv files first!")
+        st.write(st.session_state.chat_history)
+        response = full_chain(user_input, chat_history=st.session_state.chat_history)
+        if response is not None and response!="":
+            st.session_state.chat_history.append(AIMessage(content=response))
+            st.markdown(response)
