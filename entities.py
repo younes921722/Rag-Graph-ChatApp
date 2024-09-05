@@ -8,4 +8,3 @@ class Entities(BaseModel):
         description="All the person, organization, or business entities that "
         "appear in the text",
     )
-    

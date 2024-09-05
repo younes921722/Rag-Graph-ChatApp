@@ -1,13 +1,13 @@
 # %pip install --upgrade --quiet  langchain langchain-community  langchain-experimental neo4j tiktoken yfiles_jupyter_graphs 
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain.document_loaders import WikipediaLoader
+from langchain_community.document_loaders import WikipediaLoader
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_experimental.graph_transformers import LLMGraphTransformer
-from langchain_community.vectorstores import Neo4jVector
 from langchain_community.graphs import Neo4jGraph
 from langchain_community.vectorstores.neo4j_vector import remove_lucene_chars
 import os
@@ -17,6 +17,9 @@ from entities import Entities
 from langchain_core.runnables import  RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from PyPDF2 import PdfReader
+from langchain_core.documents import Document
+
 
 # loading envirement variables
 load_dotenv()
@@ -31,7 +34,9 @@ llm = get_llm()
 
 # Get the embedding model
 def get_embedding():
-    model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    # model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    model_name="sentence-transformers/all-mpnet-base-v2"
+    # model_name = "all-mpnet-base-v2"
     embeddings = HuggingFaceEmbeddings(model_name=model_name)
     return embeddings
 
@@ -48,31 +53,42 @@ def wiki_loader(query:str):
     return raw_documents
 
 ## Loading data from pdfs:
-def pdf_loader(path:str):
-    loader = PyPDFLoader(path)
-    docs = loader.load()
-    return docs
+def pdf_loader(pdf_docs):
+    # get pdf text
+    if pdf_docs is not None:
+        pdf_reader = PdfReader(pdf_docs)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+    return text
 
-# Spliting data into chunks
+# Spliting text data into chunks
 def data_spliter(docs,chunk_size=512,chunk_overlap=24):
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    return text_splitter.split_text(docs)
+
+# Spliting Documents data inot chunks
+def documents_spliter(docs,chunk_size=512,chunk_overlap=24):
+    # Convert text to a Document object with an attribute page_content to be plitted by split_documents..
+    docs = [Document(page_content=docs)]
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return text_splitter.split_documents(docs)
 
 # Loading data into a vector database (FAISS)
-def load_into_vector_db(documents,embeddings):   
-    vectorstore = FAISS.from_documents(documents=documents,embedding= embeddings)
+def load_into_vector_db(texts,embeddings):   
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+    vectorstore = FAISS.from_texts(texts=texts,embedding=embeddings)
     # Save the data localy in the following folder
     store_dir = "data_store"
-    vectorstore.save_local(store_dir)   
-    return vectorstore
+    vectorstore.save_local(store_dir)
 
 # Loading data from existing vectoreStore
 def vector_db_retriever(embeddings,path="data_store"):
     return FAISS.load_local(folder_path=path,embeddings=embeddings,allow_dangerous_deserialization=True).as_retriever()
 
 # Transforming our docs into a graph data
-## Convert docs to graph
-def convert_to_graph(llm, documents):
+## Convert docs to graph    
+def convert_to_graph(documents, llm=llm):
     llm_transformer = LLMGraphTransformer(llm=llm)
     return llm_transformer.convert_to_graph_documents(documents)
 
@@ -158,6 +174,7 @@ def full_retriever(question: str):
     vectorRetriever = vector_db_retriever(embeddings=embeddings)
     graph_data = graph_retriever(question)
     vector_data = [el.page_content for el in vectorRetriever.invoke(question)]
+    print("*"*10,vector_data)
     print("vector data: ","*"*8,vector_data)
     final_data = f"""Graph data:
                     {graph_data}
@@ -168,11 +185,12 @@ def full_retriever(question: str):
 
 # Full Chain
 def full_chain(user_input:str, chat_history:list):
+    chat_history = f"{chat_history}"
     template = """Answer the question based only on the following context:
                 {context}
                 Make sure that all the answers must be according to the Sunni view.
                 Be kind, clear and give detailed information.
-                
+                Chat history: {chat_history}
                 Question: {question}
                 Use natural language and be concise.
                 Answer:"""
@@ -180,12 +198,13 @@ def full_chain(user_input:str, chat_history:list):
     prompt = ChatPromptTemplate.from_template(template)
 
     # Convert chat_history to a string, handling both AIMessage and HumanMessage instances
-    chat_history_str = "\n".join([str(item) for item in chat_history]) if isinstance(chat_history, list) else str(chat_history)
+    # chat_history_str = "\n".join([str(item) for item in chat_history]) if isinstance(chat_history, list) else str(chat_history)
 
     chain = (
             {
                 "context": full_retriever,
                 "question": RunnablePassthrough(),
+                "chat_history": RunnablePassthrough()
             }
         | prompt
         | llm
@@ -199,7 +218,7 @@ def full_chain(user_input:str, chat_history:list):
     print("Chat History:", chat_history)
     
     # Ensure the input structure is correct
-    response = chain.invoke(input=user_input)
+    response = chain.invoke({"question":user_input,"chat_history":chat_history})
     
     print("Response:", response)
     return response
