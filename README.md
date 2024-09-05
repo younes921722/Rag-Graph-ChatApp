@@ -27,14 +27,13 @@ In this implementation, the project is focused on files related to the Prophet M
    git clone https://github.com/younes921722/Rag-Graph-ChatApp
    ```
 2. Install the required dependencies:
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 3. Run the Streamlit app:
-```bash
-Copier le code
-streamlit run app.py
-```
+   ```bash
+   streamlit run app.py
+   ```
 ## Usage
 
 - Upload a PDF file through the sidebar.
